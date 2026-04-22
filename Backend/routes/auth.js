@@ -1,29 +1,29 @@
-// routes/auth.js
 
 const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 
-const { getDB } = require("../config/db");
+const { collections } = require("../config/db");
 const { JWT_SECRET, EMAIL_FROM, EMAIL_PASSWORD } = require("../config/config");
+const { verifyToken, authMiddleware } = require("../middleware");
 
 const router = express.Router();
 
-// ================= OTP STORAGE =================
 const otpStorage = new Map();
 
-// ================= HELPERS =================
+
 function generateOTP() {
     return String(100000 + Math.floor(Math.random() * 900000));
 }
 
 async function sendOTP(email, otp) {
     const transporter = nodemailer.createTransport({
-        service: "gmail",
+        host: "smtp.gmail.com",
+        port: 587,
+        secure: false,
         auth: { user: EMAIL_FROM, pass: EMAIL_PASSWORD },
     });
-
     await transporter.sendMail({
         from: EMAIL_FROM,
         to: email,
@@ -32,166 +32,163 @@ async function sendOTP(email, otp) {
     });
 }
 
-function verifyToken(token) {
-    return jwt.verify(token, JWT_SECRET);
-}
 
-function authMiddleware(req, res, next) {
-    const authHeader = req.headers.authorization || "";
 
-    if (!authHeader.startsWith("Bearer "))
-        return res.status(401).json({ error: "No token" });
-
-    try {
-        const decoded = verifyToken(authHeader.split(" ")[1]);
-        req.email = decoded.email;
-        next();
-    } catch {
-        res.status(401).json({ error: "Invalid token" });
-    }
-}
-
-// ================= ROUTES =================
-
-// REGISTER
+// POST /api/auth/register
 router.post("/register", async (req, res) => {
-    const db = getDB();
-    const userCollection = db.collection("users");
-    const leaderboardCollection = db.collection("leaderboard");
+    try {
+        const { username, email, password } = req.body;
+        if (!username || !email || !password)
+            return res.status(400).json({ error: "username, email and password are required" });
 
-    const { username, email, password } = req.body;
+        const existing = await collections.users().findOne({ username });
+        if (existing) return res.status(409).json({ error: "Username already exists" });
 
-    const existing = await userCollection.findOne({ username });
-    if (existing) return res.status(409).json({ error: "User exists" });
+        const hashedPassword = await bcrypt.hash(password, 14);
+        await collections.users().insertOne({
+            username, email,
+            password: hashedPassword,
+            role: "student",
+            loggedIn: "false",
+        });
+        await collections.leaderboard().insertOne({ username, points: 0 });
 
-    const hashed = await bcrypt.hash(password, 10);
-
-    await userCollection.insertOne({
-        username,
-        email,
-        password: hashed,
-        role: "student",
-        loggedIn: "false"
-    });
-
-    await leaderboardCollection.insertOne({ username, points: 0 });
-
-    res.json({ message: "Registered successfully" });
+        res.json({ success: true, message: "User registered successfully!" });
+    } catch (err) {
+        console.error("register:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
 });
 
-// LOGIN
+// POST /api/auth/login
 router.post("/login", async (req, res) => {
-    const db = getDB();
-    const userCollection = db.collection("users");
+    try {
+        const { email, password } = req.body;
+        if (!email || !password)
+            return res.status(400).json({ error: "email and password are required" });
 
-    const { email, password } = req.body;
+        const user = await collections.users().findOne({ email });
+        if (!user) return res.status(401).json({ error: "Invalid email or password" });
 
-    const user = await userCollection.findOne({ email });
-    if (!user) return res.status(401).json({ error: "Invalid email/password" });
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) return res.status(401).json({ error: "Invalid email or password" });
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).json({ error: "Invalid email/password" });
+        const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: "7d" });
+        await collections.users().updateOne({ email }, { $set: { loggedIn: "true" } });
 
-    const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: "7d" });
-
-    await userCollection.updateOne({ email }, { $set: { loggedIn: "true" } });
-
-    res.json({ message: "Login successful", token });
+        res.json({ message: "Login successful!", token });
+    } catch (err) {
+        console.error("login:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
 });
 
-// LOGOUT
+// POST /api/auth/logout
 router.post("/logout", async (req, res) => {
-    const db = getDB();
-    const userCollection = db.collection("users");
-
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ error: "No token" });
-
     try {
-        const decoded = verifyToken(token);
+        const token = req.headers["authorization"]?.split(" ")[1];
+        if (!token) return res.status(401).json({ error: "Authorization token required" });
 
-        await userCollection.updateOne(
-            { email: decoded.email },
-            { $set: { loggedIn: "false" } }
-        );
-
-        res.json({ message: "Logged out" });
+        const claims = verifyToken(token);
+        await collections.users().updateOne({ email: claims.email }, { $set: { loggedIn: "false" } });
+        res.json({ message: "Logged out successfully!" });
     } catch {
-        res.status(401).json({ error: "Invalid token" });
+        res.status(401).json({ error: "Invalid or expired token" });
     }
 });
 
-// STATUS (Protected)
+// GET /api/auth/status  (protected)
 router.get("/status", authMiddleware, async (req, res) => {
-    const db = getDB();
-    const userCollection = db.collection("users");
-
-    const user = await userCollection.findOne({ email: req.email });
-
-    res.json({ loggedIn: user?.loggedIn || false });
+    try {
+        const user = await collections.users().findOne({ email: req.email });
+        if (!user) return res.status(401).json({ loggedIn: false, error: "User not found" });
+        res.json({ loggedIn: user.loggedIn, email: req.email });
+    } catch (err) {
+        res.status(500).json({ error: "Internal server error" });
+    }
 });
 
-// USERNAME FROM TOKEN
-router.get("/username", async (req, res) => {
-    const db = getDB();
-    const userCollection = db.collection("users");
-
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ error: "No token" });
-
+// POST /api/auth/check-role
+router.post("/check-role", async (req, res) => {
     try {
-        const decoded = verifyToken(token);
-        const user = await userCollection.findOne({ email: decoded.email });
+        const { email } = req.body;
+        const user = await collections.users().findOne({ email });
+        if (!user) return res.status(404).json({ error: "User not found" });
+        res.json({ isAdmin: user.role === "admin" });
+    } catch (err) {
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
 
-        res.json({ username: user.username });
+// GET /api/auth/username  (from JWT)
+router.get("/username", async (req, res) => {
+    try {
+        const token = req.headers["authorization"]?.split(" ")[1];
+        if (!token) return res.status(401).json({ error: "Missing token" });
+
+        const claims = verifyToken(token);
+        const user = await collections.users().findOne({ email: claims.email });
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        res.json({ loggedIn: user.username, email: claims.email });
     } catch {
         res.status(401).json({ error: "Invalid token" });
     }
 });
 
-// ================= OTP =================
-
-// REQUEST OTP
-router.post("/request-otp", async (req, res) => {
-    const { email } = req.body;
-
-    const otp = generateOTP();
-    otpStorage.set(email, otp);
-
+// GET /api/auth/username/email/:email
+router.get("/username/email/:email", async (req, res) => {
     try {
+        const user = await collections.users().findOne({ email: req.params.email });
+        if (!user) return res.status(404).json({ error: "User not found" });
+        res.json({ username: user.username });
+    } catch (err) {
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+// ─────────────────────────────────────────────
+// OTP routes
+// ─────────────────────────────────────────────
+
+// POST /api/auth/request-otp
+router.post("/request-otp1", async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: "email is required" });
+
+        const otp = generateOTP();
+        otpStorage.set(email, otp);
         await sendOTP(email, otp);
-        res.json({ message: "OTP sent" });
-    } catch {
+        res.json({ message: "OTP sent successfully!" });
+    } catch (err) {
+        console.error("request-otp:", err);
         res.status(500).json({ error: "Failed to send OTP" });
     }
 });
 
-// VERIFY OTP
-router.post("/verify-otp", (req, res) => {
+// POST /api/auth/verify-otp
+router.post("/verify-otp1", (req, res) => {
     const { email, otp } = req.body;
-
     if (otpStorage.get(email) !== otp)
         return res.status(401).json({ error: "Invalid OTP" });
-
     otpStorage.delete(email);
-    res.json({ message: "OTP verified" });
+    res.json({ message: "OTP verified successfully!" });
 });
 
-// FORGOT PASSWORD
+// POST /api/auth/forgotpassword
 router.post("/forgotpassword", async (req, res) => {
-    const db = getDB();
-    const userCollection = db.collection("users");
+    try {
+        const { email, newPassword } = req.body;
+        const user = await collections.users().findOne({ email });
+        if (!user) return res.status(404).json({ error: "User not found" });
 
-    const { email, newPassword } = req.body;
-
-    const hashed = await bcrypt.hash(newPassword, 10);
-
-    await userCollection.updateOne(
-        { email },
-        { $set: { password: hashed } }
-    );
-
-    res.json({ message: "Password reset successful" });
+        const hashed = await bcrypt.hash(newPassword, 14);
+        await collections.users().updateOne({ email }, { $set: { password: hashed } });
+        res.json({ message: "Password reset successful" });
+    } catch (err) {
+        res.status(500).json({ error: "Internal server error" });
+    }
 });
 
 module.exports = router;
