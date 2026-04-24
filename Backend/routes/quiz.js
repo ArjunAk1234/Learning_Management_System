@@ -30,6 +30,35 @@ router.post("/admin/create", async (req, res) => {
     }
 });
 
+// POST /api/quiz/admin/publish/:quizId  — activate a quiz for all students
+router.post("/admin/publish/:quizId", async (req, res) => {
+    try {
+        const { quizId } = req.params;
+        const { durationHours = 24 } = req.body;
+
+        const now = new Date();
+        const end = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
+
+        const result = await collections.quiz().updateOne(
+            { id: quizId },
+            { $set: { startTime: now, endTime: end, publishedAt: now } }
+        );
+
+        if (result.matchedCount === 0)
+            return res.status(404).json({ error: "Quiz not found" });
+
+        res.json({
+            message: `Quiz published! Active from now until ${end.toLocaleString()}`,
+            quizId,
+            startTime: now,
+            endTime: end
+        });
+    } catch (err) {
+        console.error("publish-quiz:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 // GET /api/quiz/admin/all
 router.get("/admin/all", async (req, res) => {
     try {

@@ -26,6 +26,7 @@ const collections = {
     leaderboard: () => getDB().collection("leaderboard"),
     quiz: () => getDB().collection("quiz"),
     submissions: () => getDB().collection("submissions"),
+    chats: () => getDB().collection("chats"),
 };
 
 module.exports = { connectDB, getDB, collections };

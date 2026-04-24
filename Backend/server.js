@@ -17,17 +17,32 @@ const assignmentRoutes = require("./routes/assignments");
 const leaderboardRoutes = require("./routes/leaderboard");
 const quizRoutes = require("./routes/quiz");
 const dashboardRoutes = require("./routes/dashboard");
+const aiRoutes = require("./routes/ai");
 
 // ─────────────────────────────────────────────
 // App setup
 // ─────────────────────────────────────────────
 const app = express();
 
+const serverLogs = [];
+global.addLog = (msg) => {
+    const log = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    console.log(log);
+    serverLogs.push(log);
+    if (serverLogs.length > 50) serverLogs.shift();
+};
+
+app.use((req, res, next) => {
+    global.addLog(`${req.method} ${req.url} (Type: ${req.get('Content-Type') || 'None'})`);
+    next();
+});
+
+app.get("/api/server-logs", (req, res) => res.json(serverLogs));
+
 app.use(cors({
-    origin: ["http://localhost:3000", "http://localhost:5173"],
+    origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Origin", "Content-Type", "Authorization"],
-    credentials: true,
+    allowedHeaders: ["Origin", "Content-Type", "Authorization"]
 }));
 
 app.use(express.json());
@@ -47,6 +62,7 @@ app.use("/assignments", assignmentRoutes);
 app.use("/leaderboard", leaderboardRoutes);
 app.use("/quiz", quizRoutes);
 app.use("/dashboard", dashboardRoutes);
+app.use("/ai", aiRoutes);
 // app.use("/", authRoutes);
 // app.use("/", userRoutes);
 // app.use("/", courseRoutes);
@@ -60,7 +76,14 @@ app.post("/request-otp1", (req, res) => {
     console.log("HIT request-otp1");
     res.json({ message: "Direct route working" });
 });
-// 404 fallback
+// HTML Test Portals
+app.get("/test-ai", (req, res) => {
+    res.sendFile(path.join(__dirname, "../test-ai.html"));
+});
+app.get("/test-upload", (req, res) => {
+    res.sendFile(path.join(__dirname, "../test-upload.html"));
+});
+
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 
 // Global error handler
@@ -71,9 +94,23 @@ app.use((err, _req, res, _next) => {
 
 connectDB()
     .then(() => {
-        app.listen(PORT, () => {
-            console.log(`Server running on http://localhost:${PORT}`);
-
+        app.listen(PORT, async () => {
+            console.log(`\n🚀 Backend Server: http://localhost:${PORT}`);
+            
+            // Explicit ChromaDB Startup Verification
+            try {
+                const response = await fetch("http://127.0.0.1:8000/api/v2/heartbeat");
+                if (response.ok) {
+                    const hb = await response.json();
+                    console.log(`✅ ChromaDB: CONNECTED (Heartbeat: ${hb['nanosecond heartbeat']})`);
+                    if (global.addLog) global.addLog("SYSTEM: ChromaDB Connection Verified via v2 Heartbeat.");
+                } else {
+                    console.warn("⚠️ ChromaDB: Server responded with status:", response.status);
+                }
+            } catch (err) {
+                console.error("❌ ChromaDB: NOT FOUND on port 8000. Start it with the PROTOCOL_BUFFERS fix.");
+                if (global.addLog) global.addLog("SYSTEM ERROR: ChromaDB unreachable.");
+            }
         });
 
     })

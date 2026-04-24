@@ -10,7 +10,9 @@ const PDFDocument = require("pdfkit");
 
 const { collections } = require("../config/db");
 const { UPLOAD_DIR } = require("../config/config");
+const multer = require("multer");
 const { upload } = require("../middleware");
+const { processAndEmbedPdf } = require("../utils/aiHelper");
 
 const router = express.Router();
 
@@ -177,6 +179,61 @@ router.delete("/admin/delete/:name", async (req, res) => {
         res.json({ message: "Course and all its data deleted successfully" });
     } catch (err) {
         console.error("delete-course:", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+// multer config that ONLY accepts PDFs
+
+const pdfUpload = multer({
+    storage: multer.memoryStorage(),       // keeps file in RAM temporarily
+    limits: { fileSize: 10 * 1024 * 1024 }, // max 10 MB
+    fileFilter: (_req, file, cb) => {
+        if (file.mimetype === "application/pdf") {
+            cb(null, true);                // ✅ accept
+        } else {
+            cb(new Error("Only PDF files are allowed")); // ❌ reject
+        }
+    },
+});
+
+// POST /courses/admin/:course/upload-pdf
+router.post("/admin/:course/upload-pdf", pdfUpload.single("pdf"), async (req, res) => {
+    try {
+        const courseName = req.params.course;
+
+        // 1. Does this course exist in DB?
+        const course = await collections.courses().findOne({ name: courseName });
+        if (!course) return res.status(404).json({ error: "Course not found" });
+
+        // 2. Was a file actually sent?
+        if (!req.file) return res.status(400).json({ error: "No PDF file uploaded" });
+
+        // 3. Save file to disk
+        const dir = courseDir(courseName, "resources");
+        fs.mkdirSync(dir, { recursive: true });
+        const fileName = Date.now() + "_" + req.file.originalname; // unique name
+        fs.writeFileSync(path.join(dir, fileName), req.file.buffer);
+
+        // 4. Record filename in MongoDB
+        await collections.courses().updateOne(
+            { name: courseName },
+            { $push: { resources: fileName } }
+        );
+
+        // 🤖 Kick off AI text extraction and ChromaDB indexing in the background 
+        // We pass the full path of the saved PDF.
+        processAndEmbedPdf(courseName, path.join(dir, fileName));
+
+        res.status(201).json({
+            message: "PDF uploaded successfully",
+            file: fileName,
+            downloadUrl: `/courses/${courseName}/resource/${fileName}`,
+        });
+
+    } catch (err) {
+        if (err.message === "Only PDF files are allowed") {
+            return res.status(400).json({ error: err.message });
+        }
         res.status(500).json({ error: "Internal server error" });
     }
 });
