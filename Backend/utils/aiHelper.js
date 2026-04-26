@@ -23,7 +23,10 @@ async function processAndEmbedPdf(courseName, pdfFilePath) {
             const parser = new PDFParser(null, 1);
             parser.on("pdfParser_dataReady", (data) => {
                 const text = data.Pages
-                    .map(page => page.Texts.map(t => decodeURIComponent(t.R[0].T)).join(" "))
+                    .map(page => page.Texts.map(t => {
+                        try { return decodeURIComponent(t.R[0].T); } 
+                        catch (e) { return unescape(t.R[0].T); }
+                    }).join(" "))
                     .join("\n");
                 resolve(text);
             });

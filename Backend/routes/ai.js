@@ -17,7 +17,10 @@ function extractPdfText(buffer) {
         parser.on("pdfParser_dataReady", (data) => {
             try {
                 const text = data.Pages
-                    .map(page => page.Texts.map(t => decodeURIComponent(t.R[0].T)).join(" "))
+                    .map(page => page.Texts.map(t => {
+                        try { return decodeURIComponent(t.R[0].T); } 
+                        catch (err) { return unescape(t.R[0].T); }
+                    }).join(" "))
                     .join("\n");
                 resolve(text);
             } catch (e) { reject(e); }

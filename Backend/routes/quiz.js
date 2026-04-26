@@ -34,14 +34,18 @@ router.post("/admin/create", async (req, res) => {
 router.post("/admin/publish/:quizId", async (req, res) => {
     try {
         const { quizId } = req.params;
-        const { durationHours = 24 } = req.body;
+        const { durationHours = 24, title, questions } = req.body;
 
         const now = new Date();
         const end = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
 
+        const setPayload = { startTime: now, endTime: end, publishedAt: now, published: true };
+        if (title) setPayload.title = title;
+        if (questions) setPayload.questions = questions;
+
         const result = await collections.quiz().updateOne(
             { id: quizId },
-            { $set: { startTime: now, endTime: end, publishedAt: now } }
+            { $set: setPayload }
         );
 
         if (result.matchedCount === 0)

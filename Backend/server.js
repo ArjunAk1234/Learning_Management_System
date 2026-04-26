@@ -55,14 +55,14 @@ app.use("/uploads", express.static(UPLOAD_DIR));
 // ─────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────
-app.use("/auth", authRoutes);
-app.use("/users", userRoutes);
-app.use("/courses", courseRoutes);
-app.use("/assignments", assignmentRoutes);
-app.use("/leaderboard", leaderboardRoutes);
-app.use("/quiz", quizRoutes);
-app.use("/dashboard", dashboardRoutes);
-app.use("/ai", aiRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/courses", courseRoutes);
+app.use("/api/assignments", assignmentRoutes);
+app.use("/api/leaderboard", leaderboardRoutes);
+app.use("/api/quiz", quizRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/ai", aiRoutes);
 // app.use("/", authRoutes);
 // app.use("/", userRoutes);
 // app.use("/", courseRoutes);
@@ -71,7 +71,7 @@ app.use("/ai", aiRoutes);
 // app.use("/", quizRoutes);
 // app.use("/", dashboardRoutes);
 // Health check
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 app.post("/request-otp1", (req, res) => {
     console.log("HIT request-otp1");
     res.json({ message: "Direct route working" });
