@@ -1,0 +1,8 @@
+/* Same as admin */
+body {
+  background-color: white;
+  background-image: url('/white.png');
+  background-repeat: repeat;
+  background-size: 50%;
+  background-position: center;
+}
