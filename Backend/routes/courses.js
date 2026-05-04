@@ -1,7 +1,4 @@
-/**
- * routes/courses.js
- * Handles: CRUD for courses, resource uploads, text notes, PDF download
- */
+
 
 const express = require("express");
 const fs = require("fs");

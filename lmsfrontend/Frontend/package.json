@@ -20,6 +20,7 @@
     "bootstrap": "^5.3.4",
     "framer-motion": "^12.6.5",
     "gsap": "^3.12.7",
+    "jwt-decode": "^4.0.0",
     "lucide-react": "^0.488.0",
     "normalize.css": "^8.0.1",
     "particles.js": "^2.0.0",

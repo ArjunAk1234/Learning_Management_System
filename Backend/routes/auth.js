@@ -147,9 +147,6 @@ router.get("/username/email/:email", async (req, res) => {
     }
 });
 
-// ─────────────────────────────────────────────
-// OTP routes
-// ─────────────────────────────────────────────
 
 // POST /api/auth/request-otp
 router.post("/request-otp1", async (req, res) => {

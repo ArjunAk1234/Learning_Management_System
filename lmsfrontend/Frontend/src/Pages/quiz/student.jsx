@@ -8,14 +8,14 @@ function StudentDashboard() {
   const [pastQuizzes, setPastQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [view, setView] = useState('quizList'); // 'quizList', 'takeQuiz', 'results', 'leaderboard'
+  const [view, setView] = useState('quizList');
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [quizResults, setQuizResults] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
-  const [studentEmail, setStudentEmail] = useState(''); // Would be set from user authentication
+  const [studentEmail, setStudentEmail] = useState('');
   const [username, setUsername] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [activeTab, setActiveTab] = useState('activeQuizzes'); // 'activeQuizzes' or 'quizHistory'
+  const [activeTab, setActiveTab] = useState('activeQuizzes');
   const [submittedQuizIds, setSubmittedQuizIds] = useState(new Set());
 
   useEffect(() => {
@@ -39,13 +39,11 @@ function StudentDashboard() {
       // Fetch quizzes
       fetchActiveQuizzes();
 
-      // Fetch student progress with a slight delay to ensure other operations complete first
       setTimeout(() => {
         fetchStudentProgress(userEmail);
       }, 100);
     } else {
       console.warn("No user email found in localStorage");
-      // Still fetch active quizzes even without email
       fetchActiveQuizzes();
     }
   }, [refreshKey]);
@@ -55,7 +53,6 @@ function StudentDashboard() {
       const response = await axios.get(`http://localhost:8006/auth/username/email/${email}`);
       setUsername(response.data.username);
     } catch (err) {
-      // Handle error silently or set a default username
       setUsername('Student');
     }
   };
@@ -80,7 +77,6 @@ function StudentDashboard() {
   const fetchStudentProgress = async (email) => {
     try {
       setLoading(true);
-      // First, check if email exists before making the API call
       if (!email || email.trim() === '') {
         console.log("No email found for student progress fetch");
         setPastQuizzes([]);
@@ -91,14 +87,10 @@ function StudentDashboard() {
       // Add some logging to help debug
       console.log("Fetching student progress for email:", email);
 
-      // Make the API call with error handling
       const response = await axios.get(`http://localhost:8006/quiz/admin/progress/${email}`, {
-        // Add timeout to prevent hanging requests
         timeout: 5000,
-        // Add headers if needed for authentication
         headers: {
           'Content-Type': 'application/json',
-          // Add auth token if you have one stored
           'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
         }
       });
@@ -127,19 +119,14 @@ function StudentDashboard() {
 
       // More specific error handling
       if (err.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
         console.error("Error response data:", err.response.data);
         console.error("Error response status:", err.response.status);
       } else if (err.request) {
-        // The request was made but no response was received
         console.error("No response received:", err.request);
       } else {
-        // Something happened in setting up the request that triggered an Error
         console.error("Request setup error:", err.message);
       }
 
-      // Don't show error if it's just that the user hasn't taken any quizzes
       if (err.response && err.response.status === 404) {
         setPastQuizzes([]);
         setError(null); // No need to show error for 404
@@ -186,14 +173,13 @@ function StudentDashboard() {
       } else if (newView === 'leaderboard') {
         fetchLeaderboard(quiz.quizId || quiz.id);
       } else if (newView === 'takeQuiz') {
-        // Check if quiz has expired
+
         if (isQuizExpired(quiz)) {
           setError('This quiz has expired and can no longer be taken.');
           setView('quizList');
           return;
         }
 
-        // Check if already submitted
         checkSubmissionStatus(quiz.id);
       }
     }
